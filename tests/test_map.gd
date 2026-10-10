@@ -152,16 +152,19 @@ static func run() -> Array:
 			coastal_n += 1
 	check.call("coastal_exists", coastal_n >= 1, "coastal=%d" % coastal_n)
 
-	# Each nation owns its capital plus up to 2 adjacent cells.
+	# Each nation starts with exactly ONE territory: its capital. Empires must
+	# spread outward through connected neighbors from there.
 	var own_ok := true
 	for n in state.nations:
 		var c := 0
 		for t in terrs:
 			if t.owner_id == n.id:
 				c += 1
-		if c < 1 or c > 3:
+		var cap := state.get_territory(n.capital_id)
+		if c != 1 or cap == null or cap.owner_id != n.id or not cap.is_capital:
 			own_ok = false
-	check.call("starting_territories", own_ok, "")
+	check.call("starting_territories_single_capital", own_ok,
+		"each nation must own exactly its capital and nothing else")
 
 	# Terrain mix: >= 4 kinds present, >= 15% plains/fertile.
 	var kinds := {}

@@ -93,4 +93,48 @@ static func run() -> Array:
 		s.over and not s.player_won and s.winner_id == -1,
 		"over=%s won=%s winner=%d" % [str(s.over), str(s.player_won), s.winner_id]))
 
+	# 7. Uninitialised / empty world: no eliminations, no instant victory.
+	s = _base()
+	s.territories = []
+	VictorySim.check(s)
+	var no_accident := not s.over
+	for n in s.nations:
+		no_accident = no_accident and not n.eliminated
+	out.append(_t("victory.no_instant_win_on_empty",
+		no_accident, "over=%s" % str(s.over)))
+
+	# 8. Real battle statistics: a genuine capture through MovementSim must
+	# increment captured, battles_won/lost, troops_lost/killed — the end
+	# screen reads these exact counters.
+	s = _base()
+	var pt0 = s.get_territory(0)
+	var pt1 = s.get_territory(1)
+	pt0.neighbors.assign([1])
+	pt1.neighbors.assign([0])
+	pt1.garrison = 0
+	pt1.army = ArmyData.create(1, 20, 1, 0.0) # weak defender
+	StateMock.launch(s, 0, 0, 1, 200, 0.5)
+	s.day = 1.0
+	MovementSim.tick(s, 1.0)
+	var pl = s.get_nation(0)
+	var rv = s.get_nation(1)
+	var stats_ok: bool = pt1.owner_id == 0 \
+		and int(pl.stats["captured"]) >= 1 \
+		and int(pl.stats["battles_won"]) >= 1 \
+		and int(rv.stats["battles_lost"]) >= 1 \
+		and int(pl.stats["troops_killed"]) > 0 \
+		and int(pl.stats["troops_lost"]) + int(rv.stats["troops_lost"]) > 0
+	out.append(_t("victory.stats_from_real_battle", stats_ok,
+		"captured=%d won=%d killed=%d" % [int(pl.stats["captured"]),
+			int(pl.stats["battles_won"]), int(pl.stats["troops_killed"])]))
+
+	# 9. No victory while any AI still holds land, even after many ticks.
+	s = _base()
+	for i in range(10):
+		VictorySim.check(s)
+		s.day += 1.0
+	out.append(_t("victory.no_early_victory",
+		not s.over and not s.player_won,
+		"over=%s after 10 days" % str(s.over)))
+
 	return out

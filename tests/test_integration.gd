@@ -19,6 +19,7 @@ static func run() -> Array:
 	var out: Array = []
 	out.append(_new_match_sane())
 	out.append(_player_expands_to_neutral())
+	out.append(_connected_expansion())
 	out.append(_recruit_arrives())
 	out.append(_economy_moves())
 	out.append(_ai_acts_over_time())
@@ -84,6 +85,76 @@ static func _player_expands_to_neutral() -> Dictionary:
 	if s.get_territory(neut_id).owner_id != 0:
 		return _t("integration.player_expands", false, "neutral not captured after 40d")
 	return _t("integration.player_expands", true)
+
+
+## Empires spread outward from a single capital: the player starts with one
+## territory, can only take neighbors, and all holdings stay connected.
+static func _connected_expansion() -> Dictionary:
+	var s: GameState = GameState.create(_settings(61))
+	var p := s.player()
+	if s.owned_ids(0).size() != 1:
+		return _t("integration.connected_expansion", false,
+			"player must start with exactly 1 territory")
+	var cap := s.get_territory(p.capital_id)
+	# A far, non-adjacent neutral must be rejected as a move target.
+	var far := -1
+	for t in s.territories:
+		if t.owner_id == -1 and not cap.neighbors.has(t.id):
+			far = t.id
+			break
+	if far < 0:
+		return _t("integration.connected_expansion", false, "no far neutral found")
+	cap.army = ArmyData.create(0, 900, cap.id, 0.5)
+	var bad: Dictionary = s.order_move(0, cap.id, far, 500)
+	if bool(bad.get("ok", false)):
+		return _t("integration.connected_expansion", false,
+			"disconnected attack was allowed")
+	# Capture two neighbors in sequence; each must join the connected empire.
+	for step in range(2):
+		var from_id := -1
+		var neut_id := -1
+		for tid in s.owned_ids(0):
+			var t := s.get_territory(tid)
+			for nb in t.neighbors:
+				if s.get_territory(nb).owner_id == -1:
+					from_id = tid
+					neut_id = nb
+					break
+			if from_id >= 0:
+				break
+		if from_id < 0:
+			break # fully surrounded; still connected, still valid
+		var ft := s.get_territory(from_id)
+		if ft.army == null:
+			ft.army = ArmyData.create(0, 900, from_id, 0.5)
+		else:
+			ft.army.troops = 900
+		var r: Dictionary = s.order_move(0, from_id, neut_id, 700)
+		if not bool(r.get("ok", false)):
+			return _t("integration.connected_expansion", false,
+				"neighbor order failed: " + str(r.get("error")))
+		for _i in 60:
+			s.tick(1.0)
+			if s.over:
+				break
+			if s.get_territory(neut_id).owner_id == 0:
+				break
+		if s.get_territory(neut_id).owner_id != 0:
+			return _t("integration.connected_expansion", false,
+				"neighbor not captured")
+	# All player territories must be reachable from the capital via owned land.
+	var seen := {cap.id: true}
+	var queue: Array[int] = [cap.id]
+	while not queue.is_empty():
+		var cur: int = queue.pop_back()
+		for nb in s.get_territory(cur).neighbors:
+			if s.get_territory(nb).owner_id == 0 and not seen.has(nb):
+				seen[nb] = true
+				queue.append(nb)
+	if seen.size() != s.owned_ids(0).size():
+		return _t("integration.connected_expansion", false,
+			"holdings not connected: %d of %d reachable" % [seen.size(), s.owned_ids(0).size()])
+	return _t("integration.connected_expansion", true)
 
 
 static func _recruit_arrives() -> Dictionary:
