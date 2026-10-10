@@ -17,6 +17,10 @@ extends RefCounted
 static func check(state) -> void:
 	if state.over:
 		return
+	# Never judge an uninitialised or empty world: with no territories every
+	# nation would "own zero" and the match would end instantly by accident.
+	if state.territories.is_empty() or state.nations.is_empty():
+		return
 	for n in state.nations:
 		if n.eliminated:
 			continue
