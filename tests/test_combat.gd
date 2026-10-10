@@ -75,15 +75,24 @@ static func run() -> Array:
 		"captured=%s atk=%d def=%d" % [str(bool(r["captured"])),
 			int(r["atk_losses"]), int(r["def_losses"])]))
 
-	# 5. Even battle on plains: both bleed ~35%, nobody captures.
+	# 5. Even battle on plains: both bleed ~55%, nobody captures.
 	d = _duel(7, 100, 100)
 	r = CombatSim.resolve(d[0], d[1], d[2])
 	var atk_l := int(r["atk_losses"])
 	var def_l := int(r["def_losses"])
 	out.append(_t("combat.even_draw",
-		not bool(r["captured"]) and atk_l >= 25 and atk_l <= 50 \
-			and def_l >= 25 and def_l <= 45,
+		not bool(r["captured"]) and atk_l >= 35 and atk_l <= 70 \
+			and def_l >= 35 and def_l <= 65,
 		"atk=%d def=%d" % [atk_l, def_l]))
+
+	# 5b. Decisive 2:1 POWER ratio captures the territory (loss factor 0.55).
+	# Note: 280v100 troops ≈ 2.24x power after the 1.25x defender bonus.
+	d = _duel(7, 280, 100)
+	r = CombatSim.resolve(d[0], d[1], d[2])
+	out.append(_t("combat.two_to_one_captures",
+		bool(r["captured"]) and int(r["def_losses"]) == 100,
+		"captured=%s atk_losses=%d power_ratio=%.2f" % [str(bool(r["captured"])),
+			int(r["atk_losses"]), float(r["atk_power"]) / maxf(1.0, float(r["def_power"]))]))
 
 	# 6. Unsupplied attacker fights at 60% power.
 	var ds := _duel(7, 100, 100)
@@ -123,11 +132,10 @@ static func run() -> Array:
 		txt.contains("Terr1") and txt.contains("Mountains") and txt.contains("x1.50"),
 		txt))
 
-	# 10. At ~3x effective power the attacker usually (not always) captures.
-	# Fixed seeds make the sweep deterministic; the exact count guards the
-	# tuning curve against regressions. (188 vs 50 +25% defender bonus =
-	# 3.008x power.)
-	const EXPECTED_WINS_3X := 15  # measured 2026-10-10: 15/20 seeds capture
+	# 10. At ~3x effective power the attacker always captures (decisive
+	# combat, loss factor 0.55). Fixed seeds make the sweep deterministic.
+	# (188 vs 50 +25% defender bonus = 3.008x power.)
+	const EXPECTED_WINS_3X := 20  # measured 2026-10-10: 20/20 seeds capture
 	var wins := 0
 	for seed in range(1000, 1020):
 		var dd := _duel(seed, 188, 50)

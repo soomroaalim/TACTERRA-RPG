@@ -74,6 +74,9 @@ static func run() -> Array:
 	_t_defense(ai_script, gs_script, results)
 	_t_intercept(ai_script, gs_script, results)
 	_t_player_untouched(ai_script, gs_script, results)
+	_t_objective_defend(ai_script, gs_script, results)
+	_t_failure_memory(ai_script, gs_script, results)
+	_t_target_selection(ai_script, gs_script, results)
 	return results
 
 
@@ -230,8 +233,8 @@ static func _t_recruit_fallback(ai: GDScript, gs: GDScript, results: Array) -> v
 		"expected 240 queued at fallback territory 0; queues=%s" % str(s.training_queues.keys()))
 
 
-## EASY vs HARD on the identical scenario: 110 vs 50 on plains.
-## ratio = 110 / (50*1.1*1.25) = 1.6 -> HARD (1.35) attacks, EASY (2.2) doesn't.
+## EASY vs HARD on the identical scenario: 120 vs 50 on plains.
+## power ratio = 120 / (50*1.25) = 1.92 -> HARD (1.6) attacks, EASY (2.0) doesn't.
 ## Also verifies per-difficulty think cooldowns (5.0 vs 2.0).
 static func _t_easy_vs_hard(ai: GDScript, gs: GDScript, results: Array) -> void:
 	var mk := func(diff: int) -> Array:
@@ -240,7 +243,7 @@ static func _t_easy_vs_hard(ai: GDScript, gs: GDScript, results: Array) -> void:
 			Tacterra.Personality.EXPANSIONIST, 300.0, 10.0, 0)
 		var en := _nation(2, "Enemy", Tacterra.Difficulty.NORMAL,
 			Tacterra.Personality.DEFENSIVE, 0.0, 0.0, 1)
-		var t0 := _terr(0, "T0", 1, [1], 110)
+		var t0 := _terr(0, "T0", 1, [1], 120)
 		var t1 := _terr(1, "T1", 2, [0], 50)
 		var st: Variant = _state(gs, [t0, t1], [pl, ax, en])
 		ai.tick(st, ax, 1.0)
@@ -253,23 +256,23 @@ static func _t_easy_vs_hard(ai: GDScript, gs: GDScript, results: Array) -> void:
 	var nh: NationData = hard[1]
 	var hard_tr: Variant = _find_transit(sh, 0, 1)
 	_ok(results, "ai_easy_vs_hard_threshold",
-		se.transits.is_empty() and hard_tr != null and hard_tr.troops == 88 \
+		se.transits.is_empty() and hard_tr != null and hard_tr.troops == 96 \
 			and is_equal_approx(ne.ai_cooldown, 5.0) and is_equal_approx(nh.ai_cooldown, 2.0),
-		"easy transits=%d (want 0), hard attack troops=%s (want 88), cooldowns=%.1f/%.1f (want 5.0/2.0)" % [
+		"easy transits=%d (want 0), hard attack troops=%s (want 96), cooldowns=%.1f/%.1f (want 5.0/2.0)" % [
 			se.transits.size(),
 			str(hard_tr.troops) if hard_tr != null else "none",
 			ne.ai_cooldown, nh.ai_cooldown])
 
 
-## Personality must be visible: AGGRESSIVE (threshold 1.45) attacks at a ratio
-## where DEFENSIVE (threshold 1.9) holds back. Same 110-vs-50 setup (ratio 1.6).
+## Personality must be visible: AGGRESSIVE (threshold 1.65) attacks at a ratio
+## where DEFENSIVE (threshold 2.1) holds back. 120-vs-50 setup (ratio 1.92).
 static func _t_personality(ai: GDScript, gs: GDScript, results: Array) -> void:
 	var mk := func(pers: int) -> Variant:
 		var pl := _player()
 		var ax: NationData = _nation(1, "AI", Tacterra.Difficulty.NORMAL, pers, 300.0, 10.0, 0)
 		var en := _nation(2, "Enemy", Tacterra.Difficulty.NORMAL,
 			Tacterra.Personality.DEFENSIVE, 0.0, 0.0, 1)
-		var t0 := _terr(0, "T0", 1, [1], 110)
+		var t0 := _terr(0, "T0", 1, [1], 120)
 		var t1 := _terr(1, "T1", 2, [0], 50)
 		var st: Variant = _state(gs, [t0, t1], [pl, ax, en])
 		ai.tick(st, ax, 1.0)
@@ -391,3 +394,72 @@ static func _t_player_untouched(ai: GDScript, gs: GDScript, results: Array) -> v
 		is_equal_approx(pl.credits, 777.0) and p.owner_id == 0 and p.army.troops == 100,
 		"player credits=%.0f (want 777), territory owner=%d, troops=%d" % [
 			pl.credits, p.owner_id, p.army.troops if p.army != null else -1])
+
+
+## Objective DEFEND: when an enemy army threatens the capital, the AI must
+## select the DEFEND objective and reinforce the capital.
+static func _t_objective_defend(ai: GDScript, gs: GDScript, results: Array) -> void:
+	var pl := _player()
+	var ax := _nation(1, "AI", Tacterra.Difficulty.NORMAL,
+		Tacterra.Personality.EXPANSIONIST, 1000.0, 500.0, 1)
+	var en := _nation(2, "Enemy", Tacterra.Difficulty.NORMAL,
+		Tacterra.Personality.AGGRESSIVE, 0.0, 0.0, 3)
+	# AI capital (t1) with 100 troops, bordered by enemy (t3) with 400 troops.
+	var t0 := _terr(0, "T0", 1, [1], 300)  # interior donor
+	var t1 := _terr(1, "Cap", 1, [0, 3], 100)
+	t1.is_capital = true
+	var t3 := _terr(3, "Eth", 2, [1], 400)
+	var s: Variant = _state(gs, [t0, t1, t3], [pl, ax, en])
+	ai.tick(s, ax, 1.0)
+	_ok(results, "ai_objective_defend",
+		ax.ai_objective == "DEFEND",
+		"objective=%s (want DEFEND)" % ax.ai_objective)
+
+
+## Failure memory: after a failed attack, the AI must not immediately
+## re-attack the same territory.
+static func _t_failure_memory(ai: GDScript, gs: GDScript, results: Array) -> void:
+	var pl := _player()
+	var ax := _nation(1, "AI", Tacterra.Difficulty.NORMAL,
+		Tacterra.Personality.AGGRESSIVE, 1000.0, 500.0, 0)
+	var en := _nation(2, "Enemy", Tacterra.Difficulty.NORMAL,
+		Tacterra.Personality.DEFENSIVE, 0.0, 0.0, 1)
+	var t0 := _terr(0, "T0", 1, [1], 200)
+	t0.is_capital = true
+	var t1 := _terr(1, "T1", 2, [0], 100)
+	var s: Variant = _state(gs, [t0, t1], [pl, ax, en])
+	# Simulate a failed attack on t1 yesterday.
+	ax.ai_memory["fail"] = {1: 0.0}
+	s.day = 1.0
+	ai.tick(s, ax, 1.0)
+	var attacked := false
+	for tr in s.transits:
+		if tr.owner_id == 1 and tr.move_to == 1:
+			attacked = true
+	_ok(results, "ai_failure_memory",
+		not attacked,
+		"AI re-attacked a target it failed yesterday: %s" % str(attacked))
+
+
+## Target selection: among multiple valid targets, HARD should prefer the
+## weakest (lowest estimated defense).
+static func _t_target_selection(ai: GDScript, gs: GDScript, results: Array) -> void:
+	var pl := _player()
+	var ax := _nation(1, "AI", Tacterra.Difficulty.HARD,
+		Tacterra.Personality.EXPANSIONIST, 1000.0, 500.0, 0)
+	var en := _nation(2, "Enemy", Tacterra.Difficulty.NORMAL,
+		Tacterra.Personality.DEFENSIVE, 0.0, 0.0, 1)
+	# t0 (300 troops) borders t1 (weak, 20 troops) and t2 (strong, 150 troops).
+	var t0 := _terr(0, "T0", 1, [1, 2], 300)
+	t0.is_capital = true
+	var t1 := _terr(1, "Weak", 2, [0], 20)
+	var t2 := _terr(2, "Strong", 2, [0], 150)
+	var s: Variant = _state(gs, [t0, t1, t2], [pl, ax, en])
+	ai.tick(s, ax, 1.0)
+	var hit_weak := false
+	for tr in s.transits:
+		if tr.owner_id == 1 and tr.move_to == 1:
+			hit_weak = true
+	_ok(results, "ai_target_selection",
+		hit_weak,
+		"HARD AI should attack the weakest target (t1); transits=%d" % s.transits.size())
