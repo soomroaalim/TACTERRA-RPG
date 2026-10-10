@@ -204,14 +204,24 @@ second return — use `static load_dict(d) -> Array [state, error]`).
 
 Per-nation cooldown by difficulty: EASY 5d, NORMAL 3d, HARD 2d.
 On think, in order:
+0. Update tactical memory (failed attacks) and select a war objective:
+   DEFEND (capital threatened), RECOVER (lost >30% of peak territories),
+   WEAKEN (weak bordered rival ≤5 territories), or EXPAND (default).
 1. If credits > 400: develop best-income territory (or fortify most-threatened
    border if DEFENSIVE).
 2. Recruit toward target_troops = 120 * territory_count * personality_mult *
    difficulty_mult (EASY 0.6, NORMAL 1.0, HARD 1.2; AGGRESSIVE 1.2, DEFENSIVE 0.9).
-3. Expansion: adjacent neutral where local power > garrison*1.3 → move order.
-4. Attack: adjacent enemy where power ratio > threshold (EASY 2.2, NORMAL 1.6,
-   HARD 1.35; AGGRESSIVE -0.15, DEFENSIVE +0.3) → attack weakest such.
-5. Defense: shift troops from safe interior to threatened border (border =
-   adjacent to enemy/neutral).
-6. H
+   Recruits at the prey's border when WEAKENing, else the capital.
+3. Expansion staging + strategic redeployment: shift oversized interior stacks
+   toward borders (one hop per think); when WEAKENing, concentrate at the
+   prey's border spearhead.
+4. Expansion: adjacent neutral where local power > garrison*1.2 → move order.
+5. Attack staging: pull adjacent donors to close the gap to the attack threshold.
+6. Attack: adjacent enemy where power ratio > threshold (EASY 2.0, NORMAL 1.8,
+   HARD 1.6; AGGRESSIVE -0.15, DEFENSIVE +0.3; WEAKEN -0.2) → attack.
+   Skips targets failed within 7 days (unless 1.5x stronger now) and heavily
+   fortified targets without extra margin. Kill-focus on weak rivals.
+7. Defense: shift troops from safe interior to threatened border. Skipped
+   when RECOVERing (defense already ran first).
+8. H
 ...[truncated 3346 chars]

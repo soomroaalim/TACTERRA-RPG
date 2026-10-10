@@ -14,6 +14,8 @@ var manpower: float = 0.0
 var capital_id: int = -1
 var eliminated: bool = false
 var ai_cooldown: float = 0.0 ## days until the AI thinks again
+var ai_objective: String = "" ## current war objective (EXPAND/WEAKEN/DEFEND/RECOVER)
+var ai_memory := {"fail": {}} ## tactical memory: {"fail": {territory_id: day}}
 var broke_warned: bool = false ## upkeep-debt notification latch
 var stats := {
 	"captured": 0, "battles_won": 0, "battles_lost": 0,

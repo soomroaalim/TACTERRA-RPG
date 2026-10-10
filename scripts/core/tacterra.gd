@@ -50,7 +50,7 @@ const UNSUPPLIED_GRACE_DAYS := 3.0
 const ATTRITION_PER_DAY := 0.02
 const DESERTION_PER_DAY := 0.03
 const DEFENDER_BONUS := 1.25
-const COMBAT_LOSS_FACTOR := 0.35
+const COMBAT_LOSS_FACTOR := 0.50 ## decisive: 2:1 captures, 1.8:1 cripples for follow-up
 const COMBAT_JITTER := 0.10 ## +/-10% rng jitter on losses (documented)
 
 # --- map ---
@@ -60,7 +60,7 @@ const SAVE_VERSION := 1
 const SAVE_SLOTS := 3
 
 const AI_THINK_DAYS := { Difficulty.EASY: 5.0, Difficulty.NORMAL: 3.0, Difficulty.HARD: 2.0 }
-const AI_ATTACK_THRESHOLD := { Difficulty.EASY: 1.9, Difficulty.NORMAL: 1.4, Difficulty.HARD: 1.2 }
+const AI_ATTACK_THRESHOLD := { Difficulty.EASY: 2.0, Difficulty.NORMAL: 1.8, Difficulty.HARD: 1.6 }
 const AI_RECRUIT_MULT := { Difficulty.EASY: 0.6, Difficulty.NORMAL: 1.0, Difficulty.HARD: 1.2 }
 
 const NATION_COLORS: Array[Color] = [
