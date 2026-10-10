@@ -191,6 +191,43 @@ func _check_game_screen() -> void:
 		_ok("end screen overlay shown on defeat")
 	else:
 		_fail("end screen overlay not shown")
+	# Back-button policy: reset state first (ensure no panel/dialog open).
+	_inst.state.over = false
+	_inst._end_shown = false
+	(end_layer as CanvasLayer).visible = false
+	_inst._close_dialog()
+	_inst.selected_id = -1
+	var rp0 := _inst.find_child("RightPanel", true, false)
+	if rp0 != null:
+		(rp0 as Control).visible = false
+	var pause_layer := _inst.find_child("PauseLayer", true, false)
+	# 1. Back with no overlay -> opens pause menu.
+	_inst._on_back_pressed()
+	if pause_layer != null and (pause_layer as CanvasLayer).visible:
+		_ok("back opens pause menu when no overlay")
+	else:
+		_fail("back did not open pause menu")
+	# 2. Back with pause open -> closes it (resume).
+	_inst._on_back_pressed()
+	if pause_layer != null and not (pause_layer as CanvasLayer).visible:
+		_ok("back closes pause menu (resume)")
+	else:
+		_fail("back did not close pause menu")
+	# 3. Back with right panel open -> closes panel.
+	_inst.select_territory(cap_id)
+	_inst._on_back_pressed()
+	var rp2 := _inst.find_child("RightPanel", true, false)
+	if rp2 != null and not (rp2 as Control).visible:
+		_ok("back closes territory panel")
+	else:
+		_fail("back did not close territory panel")
+	# 4. Back with dialog open -> closes dialog first.
+	_inst._open_move_dialog(cap_id, (t.neighbors as Array)[0])
+	_inst._on_back_pressed()
+	if _inst._dialog_layer == null:
+		_ok("back closes dialog first")
+	else:
+		_fail("back did not close dialog")
 
 
 func _count(n: Node) -> int:

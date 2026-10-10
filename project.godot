@@ -9,6 +9,7 @@ config/name="TACTERRA RPG"
 config/description="Outthink. Outmaneuver. Conquer. An offline 2D territorial warfare strategy game."
 run/main_scene="res://scripts/ui/main_menu.tscn"
 config/features=PackedStringArray("4.3", "GL Compatibility")
+config/quit_on_go_back=false
 boot_splash/bg_color=Color(0.06, 0.08, 0.12, 1)
 
 [display]

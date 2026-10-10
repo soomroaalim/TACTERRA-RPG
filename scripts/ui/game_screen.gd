@@ -77,8 +77,9 @@ var _end_layer: CanvasLayer
 var _dialog_layer: CanvasLayer
 
 # --- touch / mouse camera state ---
-var _touches := {} # index -> {pos, start, time}
+var _touches := {} # index -> {pos, start, time, panning}
 var _pinch_dist := 0.0
+const PAN_DEADZONE_PX := 14.0 ## drag must exceed this before the camera pans
 
 
 static func gs_class() -> GDScript:
@@ -91,6 +92,39 @@ static func ss_class() -> GDScript:
 	if _SaveSystem == null and ResourceLoader.exists(SS_PATH):
 		_SaveSystem = load(SS_PATH) as GDScript
 	return _SaveSystem
+
+
+func _notification(what: int) -> void:
+	# Android system Back button (NOTIFICATION_WM_GO_BACK_REQUEST).
+	# project.godot sets quit_on_go_back=false so we handle it here.
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		_on_back_pressed()
+		# Mark as handled so the OS doesn't also process it.
+		get_viewport().set_input_as_handled()
+
+
+## Android Back navigation policy:
+## 1. Dialog open -> close it.
+## 2. Right (territory) panel open -> close it.
+## 3. Pause menu open -> close it (resume).
+## 4. Game running, no overlay -> open pause menu.
+## 5. End screen showing -> ignore (it has explicit buttons).
+func _on_back_pressed() -> void:
+	if _dialog_layer != null:
+		_close_dialog()
+		return
+	if _right_panel != null and _right_panel.visible:
+		_right_panel.visible = false
+		selected_id = -1
+		target_mode = false
+		_refresh_map()
+		return
+	if _pause_layer != null and _pause_layer.visible:
+		_close_pause_menu()
+		return
+	if _end_shown:
+		return
+	_open_pause_menu()
 
 
 func _ready() -> void:
@@ -501,6 +535,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				"pos": st.position,
 				"start": st.position,
 				"time": Time.get_ticks_msec() / 1000.0,
+				"panning": false,
 			}
 			if _touches.size() == 2:
 				var ks := _touches.keys()
@@ -512,16 +547,27 @@ func _unhandled_input(event: InputEvent) -> void:
 			if not info.is_empty() and _touches.is_empty():
 				var dt: float = Time.get_ticks_msec() / 1000.0 - float(info["time"])
 				var moved: float = st.position.distance_to(info["start"] as Vector2)
-				if dt < 0.45 and moved < 26.0:
+				# Only a tap if it never entered panning mode.
+				if dt < 0.45 and moved < 26.0 and not bool(info.get("panning", false)):
 					_handle_tap(st.position)
 			_pinch_dist = 0.0
 	elif event is InputEventScreenDrag:
 		var sd := event as InputEventScreenDrag
 		if _touches.has(sd.index):
-			(_touches[sd.index] as Dictionary)["pos"] = sd.position
+			var tinfo: Dictionary = _touches[sd.index]
+			tinfo["pos"] = sd.position
+			# Deadzone: don't pan until the finger has moved deliberately.
+			# This prevents accidental map shifts from imprecise taps.
+			if not bool(tinfo.get("panning", false)):
+				var dist_from_start: float = sd.position.distance_to(tinfo["start"] as Vector2)
+				if dist_from_start >= PAN_DEADZONE_PX:
+					tinfo["panning"] = true
+				else:
+					return # still within deadzone; ignore
 		if _touches.size() == 1:
 			_camera.position -= sd.relative / _camera.zoom.x
 			_clamp_camera()
+			get_viewport().set_input_as_handled()
 		elif _touches.size() == 2:
 			var ks := _touches.keys()
 			var d: float = ((_touches[ks[0]] as Dictionary)["pos"] as Vector2) \
@@ -757,13 +803,16 @@ func _build_pause_overlay() -> void:
 	var resume := UiKit.make_button("Resume", 56, 20)
 	resume.pressed.connect(_close_pause_menu)
 	vb.add_child(resume)
+	var restart := UiKit.make_button("Restart Match", 56, 20)
+	restart.pressed.connect(_confirm_restart)
+	vb.add_child(restart)
 	var save := UiKit.make_button("Save Game", 56, 20)
 	save.pressed.connect(_do_save)
 	vb.add_child(save)
 	var help := UiKit.make_button("How to Play", 56, 20)
 	help.pressed.connect(_open_help_overlay)
 	vb.add_child(help)
-	var quit := UiKit.make_button("Quit to Menu", 56, 20)
+	var quit := UiKit.make_button("Main Menu", 56, 20)
 	quit.pressed.connect(_confirm_quit)
 	vb.add_child(quit)
 
@@ -788,6 +837,18 @@ func _confirm_quit() -> void:
 			pending_settings = {}
 			pending_state = null
 			get_tree().change_scene_to_file("res://scripts/ui/main_menu.tscn"))
+
+
+func _confirm_restart() -> void:
+	_confirm_dialog("Restart match?",
+		"Start a fresh match with the same settings? Current progress will be lost.",
+		"Restart", func() -> void:
+			_pause_layer.visible = false
+			# Reuse the original settings for a fresh match.
+			var s: Dictionary = state.settings.duplicate()
+			pending_settings = s
+			pending_state = null
+			get_tree().change_scene_to_file("res://scripts/ui/game_screen.tscn"))
 
 
 func _build_end_overlay() -> void:

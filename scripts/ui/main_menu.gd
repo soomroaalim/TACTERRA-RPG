@@ -7,6 +7,29 @@ const GameScreen := preload("res://scripts/ui/game_screen.gd")
 const SS_PATH := "res://scripts/core/save_system.gd"
 
 var _continue_btn: Button
+var _back_press_time := 0.0 ## for double-press-to-exit on Android
+
+
+func _notification(what: int) -> void:
+	# Android system Back button. On the main menu, require a double-press
+	# to exit (explicit confirmation), instead of quitting immediately.
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		var now := Time.get_ticks_msec() / 1000.0
+		if now - _back_press_time < 3.0:
+			get_tree().quit()
+		else:
+			_back_press_time = now
+			# Simple centered label (no CanvasLayer needed here).
+			var lbl := Label.new()
+			lbl.text = "Press back again to exit."
+			lbl.add_theme_font_size_override("font_size", 22)
+			lbl.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+			lbl.position -= Vector2(140, 120)
+			add_child(lbl)
+			var tw := create_tween()
+			tw.tween_interval(2.0)
+			tw.tween_callback(lbl.queue_free)
+		get_viewport().set_input_as_handled()
 
 
 func _ready() -> void:
