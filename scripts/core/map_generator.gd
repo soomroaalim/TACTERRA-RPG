@@ -53,6 +53,7 @@ static func generate(state: GameState) -> void:
 
 	var point_tris := _index_triangles(all_pts.size(), tris)
 	var polys := _voronoi_cells(all_pts, tris, point_tris, pts.size())
+	_jitter_borders(rng, polys)
 	var edges := _delaunay_edges(tris)
 	var land := _continent_mask(rng, pts, target)
 	land = _trim_excess(land, pts, polys, target)
@@ -119,16 +120,23 @@ static func move_cost(terrain: int) -> float:
 
 # ---------------------------------------------------------------- point scatter
 
-## Best-of-N sampling: each new point is the farthest-from-existing of
-## _TRIES_PER_POINT random candidates. Gives even, organic coverage.
+## Best-of-N sampling with density noise: each candidate is scored by its
+## distance-to-nearest relative to the locally desired spacing, which varies
+## across the map. Dense zones accept close neighbors (small territories),
+## sparse zones demand wide spacing (large territories) — this produces
+## varied territory sizes instead of a uniform grid feel.
 static func _scatter_points(rng: RandomNumberGenerator, count: int) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	var w := Tacterra.WORLD_SIZE.x
 	var h := Tacterra.WORLD_SIZE.y
 	var m := _BORDER_MARGIN
+	var dens := FastNoiseLite.new()
+	dens.seed = rng.randi()
+	dens.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	dens.frequency = 0.0016
 	for i in range(count):
 		var best := Vector2.ZERO
-		var best_d := -1.0
+		var best_score := -1.0
 		for t in range(_TRIES_PER_POINT):
 			var c := Vector2(rng.randf_range(m, w - m), rng.randf_range(m, h - m))
 			var dmin := 1.0e18
@@ -136,8 +144,11 @@ static func _scatter_points(rng: RandomNumberGenerator, count: int) -> PackedVec
 				var d := c.distance_squared_to(p)
 				if d < dmin:
 					dmin = d
-			if dmin > best_d:
-				best_d = dmin
+			var dz: float = clampf(dens.get_noise_2d(c.x, c.y) * 0.5 + 0.5, 0.0, 1.0)
+			var want := lerpf(300.0, 110.0, dz)
+			var score: float = sqrt(dmin) / want
+			if score > best_score:
+				best_score = score
 				best = c
 		pts.append(best)
 	return pts
@@ -267,6 +278,27 @@ static func _voronoi_cells(pts: PackedVector2Array, tris: PackedInt32Array, poin
 				poly = _fallback_hex(c)
 		cells.append(poly)
 	return cells
+
+
+## Natural-looking borders: displace every polygon vertex by smooth noise.
+## The displacement is a deterministic function of the vertex POSITION (not
+## the cell), so vertices shared by adjacent cells move identically — no
+## gaps or overlaps are introduced. Amplitude is small relative to cell size.
+static func _jitter_borders(rng: RandomNumberGenerator, polys: Array) -> void:
+	var jn := FastNoiseLite.new()
+	jn.seed = rng.randi()
+	jn.noise_type = FastNoiseLite.TYPE_SIMPLEX
+	jn.frequency = 0.004
+	var mx := Tacterra.WORLD_SIZE.x - _CLAMP_MARGIN
+	var my := Tacterra.WORLD_SIZE.y - _CLAMP_MARGIN
+	for pi in range(polys.size()):
+		var poly: PackedVector2Array = polys[pi]
+		for vi in range(poly.size()):
+			var v: Vector2 = poly[vi]
+			var ox := jn.get_noise_2d(v.x, v.y) * 16.0
+			var oy := jn.get_noise_2d(v.y + 977.0, v.x + 313.0) * 16.0
+			poly[vi] = Vector2(clampf(v.x + ox, _CLAMP_MARGIN, mx),
+				clampf(v.y + oy, _CLAMP_MARGIN, my))
 
 
 static func _fallback_hex(c: Vector2) -> PackedVector2Array:
@@ -647,14 +679,14 @@ static func _min_pairwise(caps: Array[int], territories: Array[TerritoryData]) -
 	return m
 
 
-## Each nation gets its capital (flagged, forced city) plus up to 2 adjacent
-## land cells, preferring high income. Unowned cells get a neutral garrison of
-## 20 + income*4 + 0..20.
+## Each nation starts with exactly ONE territory: its capital (flagged, forced
+## city). All expansion from there must go through connected neighbors, so
+## empires visibly spread outward from the starting point. Unowned cells get a
+## neutral garrison.
 static func _assign_capitals_and_starts(rng: RandomNumberGenerator, territories: Array[TerritoryData], nations: Array[NationData]) -> void:
 	var caps: Array[int] = []
 	if not nations.is_empty() and not territories.is_empty():
 		caps = _choose_capitals(rng, territories, nations.size())
-	var claimed := {}
 	for ni in range(nations.size()):
 		var nation: NationData = nations[ni]
 		if ni >= caps.size():
@@ -664,17 +696,10 @@ static func _assign_capitals_and_starts(rng: RandomNumberGenerator, territories:
 		cap.owner_id = nation.id
 		cap.is_capital = true
 		cap.has_city = true
+		# Capitals are major cities: guarantee enough population to support
+		# early recruitment from a single-territory start.
+		cap.population = maxi(cap.population, 800)
 		nation.capital_id = cap.id
-		claimed[cap.id] = true
-		var adj: Array[TerritoryData] = []
-		for nb_id in cap.neighbors:
-			if claimed.has(nb_id):
-				continue
-			adj.append(territories[nb_id])
-		adj.sort_custom(func(a: TerritoryData, b: TerritoryData) -> bool: return a.base_income() > b.base_income())
-		for k in range(mini(2, adj.size())):
-			adj[k].owner_id = nation.id
-			claimed[adj[k].id] = true
 	for t in territories:
 		if t.owner_id < 0:
 			t.garrison = 15 + int(t.base_income() * 2.0) + rng.randi_range(0, 10)

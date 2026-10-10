@@ -176,9 +176,12 @@ second return — use `static load_dict(d) -> Array [state, error]`).
 
 - `MapGenerator.generate(state)` — Voronoi via Delaunay dual
   (Geometry2D.triangulate_delaunay), continent masks (3 ellipses + noise),
-  terrain via FastNoiseLite, rivers as 2 random walks, capitals spread with
-  min distance, each nation gets capital + adjacent starting territories,
-  neutral garrisons 20 + value*40, names via Tacterra.random_name.
+  density-noise varied territory sizes, position-deterministic border jitter
+  for natural edges, terrain via FastNoiseLite, rivers as 2 random walks,
+  capitals spread with min distance. Each nation starts with exactly ONE
+  territory (its capital, pop >= 800); all expansion must go through
+  connected neighbors. Neutral garrisons 15 + income*2 + 0..10, names via
+  Tacterra.random_name.
 - `EconomySim.tick(state, days)` — income, upkeep, supply prod/use,
   manpower regen, training queue progress; unpaid upkeep → desertion 3%/day
   + notification (once per nation until resolved).

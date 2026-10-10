@@ -92,10 +92,17 @@ static func create(p_settings: Dictionary) -> GameState:
 	for n in s.nations:
 		n.credits = credits
 		n.supplies = supplies
-		n.manpower = n.manpower_cap(s) * 0.5
+		n.manpower = n.manpower_cap(s)
 		var cap := s.get_territory(n.capital_id)
 		if cap != null:
 			cap.army = ArmyData.create(n.id, troops, cap.id, 0.2)
+	# Creation invariant: every nation must own exactly its capital. If map
+	# generation ever breaks this, fail loudly instead of producing a match
+	# that declares victory/defeat on the first tick.
+	for n in s.nations:
+		if s.owned_ids(n.id).size() != 1 or s.get_territory(n.capital_id) == null \
+				or s.get_territory(n.capital_id).owner_id != n.id:
+			push_error("GameState.create: nation %d has invalid starting territory" % n.id)
 	return s
 
 
@@ -470,6 +477,25 @@ static func load_dict(d) -> Array:
 	for rb in reps:
 		if rb is Dictionary:
 			s.battle_reports.append(rb)
+	# Cross-check: every territory owner must be -1 or a real nation, and
+	# every non-eliminated nation must own at least one territory. Without
+	# this a corrupt save could trigger instant elimination/victory on load.
+	var valid_ids := {}
+	for n in s.nations:
+		valid_ids[n.id] = true
+	for t in s.territories:
+		if t.owner_id != -1 and not valid_ids.has(t.owner_id):
+			return [null, "territory owned by unknown nation"]
+	for n in s.nations:
+		if n.eliminated:
+			continue
+		var owns := false
+		for t in s.territories:
+			if t.owner_id == n.id:
+				owns = true
+				break
+		if not owns:
+			return [null, "nation owns no territory"]
 	return [s, ""]
 
 
