@@ -1016,6 +1016,31 @@ func _open_move_dialog(from_id: int, to_id: int) -> void:
 			"Warning: this army is unsupplied. -40% power, attrition risk.",
 			17, UiKit.DANGER))
 
+	# Battle forecast: compare our power vs the defender's effective power.
+	if dst.owner_id != 0:
+		var atk_p: float = t.army.power(1.0, t.supplied)
+		var def_troops := 0
+		if dst.owner_id == -1:
+			def_troops = dst.garrison
+		elif dst.army != null:
+			def_troops = dst.army.troops
+		if def_troops > 0:
+			var def_p: float = float(def_troops) * dst.defense_mult() * Tacterra.DEFENDER_BONUS
+			var ratio: float = atk_p / maxf(1.0, def_p)
+			var verdict := "Evenly matched — expect heavy losses."
+			var vcolor := UiKit.TEXT_DIM
+			if ratio >= 2.0:
+				verdict = "Decisive advantage — likely to capture."
+				vcolor = UiKit.GOOD
+			elif ratio >= 1.3:
+				verdict = "Favorable — will bloody the defender."
+				vcolor = UiKit.ACCENT
+			elif ratio < 0.8:
+				verdict = "Outmatched — attack not recommended."
+				vcolor = UiKit.DANGER
+			vb.add_child(UiKit.make_label(
+				"Forecast: %.1f:1  •  %s" % [ratio, verdict], 17, vcolor))
+
 	var maxv: int = t.army.troops
 	var troops_lbl := UiKit.make_label("Troops: %d" % maxv, 19)
 	vb.add_child(troops_lbl)
