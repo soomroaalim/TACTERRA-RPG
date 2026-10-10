@@ -38,12 +38,16 @@ var state = null # GameState
 var _map_root: Node2D
 var _camera: Camera2D
 var _transit_layer: Node2D
+var _frontier_layer: Node2D
 var _fill := {} # tid -> Polygon2D
 var _border := {} # tid -> Line2D
 var _selection_line := {} # tid -> Line2D
 var _army_marker := {} # tid -> Node2D
 var _army_circle := {} # tid -> Polygon2D
 var _army_label := {} # tid -> Label
+var _last_owner := {} # tid -> int (for capture flash)
+var _flash := {} # tid -> float 1..0 (capture feedback)
+var _pulse_t := 0.0 # contested-territory pulse clock
 
 # --- match state ---
 var selected_id := -1
@@ -155,6 +159,11 @@ func _build_map() -> void:
 	for t in state.territories:
 		_make_territory_node(t)
 
+	_frontier_layer = Node2D.new()
+	_frontier_layer.name = "Frontiers"
+	_frontier_layer.z_index = 5
+	_map_root.add_child(_frontier_layer)
+
 
 func _make_territory_node(t: TerritoryData) -> void:
 	var n := Node2D.new()
@@ -177,7 +186,7 @@ func _make_territory_node(t: TerritoryData) -> void:
 
 	var border := Line2D.new()
 	border.points = closed
-	border.width = 4.0
+	border.width = 2.5
 	border.joint_mode = Line2D.LINE_JOINT_ROUND
 	n.add_child(border)
 	_border[t.id] = border
@@ -202,23 +211,25 @@ func _make_territory_node(t: TerritoryData) -> void:
 		n.add_child(river)
 
 	if t.has_city or t.is_capital:
-		var r := 20.0 if t.is_capital else 13.0
+		var r := 26.0 if t.is_capital else 13.0
 		var dia := Polygon2D.new()
 		dia.polygon = PackedVector2Array(
 			[Vector2(0, -r), Vector2(r, 0), Vector2(0, r), Vector2(-r, 0)])
 		dia.position = t.center + Vector2(0, -40)
-		dia.color = Color(1.0, 0.85, 0.35) if t.is_capital else Color(0.95, 0.78, 0.42)
+		dia.color = Color(1.0, 0.82, 0.25) if t.is_capital else Color(0.95, 0.78, 0.42)
 		dia.z_index = 3
 		n.add_child(dia)
 		if t.is_capital:
-			var ring := Line2D.new()
-			ring.points = PackedVector2Array([Vector2(0, -r - 7), Vector2(r + 7, 0),
-				Vector2(0, r + 7), Vector2(-r - 7, 0), Vector2(0, -r - 7)])
-			ring.width = 3.0
-			ring.default_color = Color.WHITE
-			ring.position = dia.position
-			ring.z_index = 3
-			n.add_child(ring)
+			# Double ring + crown tick marks: unmistakable capital marker.
+			for rr in [r + 7.0, r + 14.0]:
+				var ring := Line2D.new()
+				ring.points = PackedVector2Array([Vector2(0, -rr), Vector2(rr, 0),
+					Vector2(0, rr), Vector2(-rr, 0), Vector2(0, -rr)])
+				ring.width = 3.0 if rr < r + 10.0 else 2.0
+				ring.default_color = Color.WHITE
+				ring.position = dia.position
+				ring.z_index = 3
+				n.add_child(ring)
 
 	var marker := Node2D.new()
 	marker.position = t.center
@@ -262,12 +273,42 @@ func _refresh_map() -> void:
 	if target_mode and sel_t != null:
 		for nb in sel_t.neighbors:
 			valid_targets[nb] = true
+	# Eligible neighbors of the selected territory, shown even outside
+	# target mode: attackable (neutral/enemy) vs reinforceable (own).
+	var atk_nb := {}
+	var rinf_nb := {}
+	if not target_mode and sel_t != null and sel_t.owner_id == 0:
+		for nb_id in sel_t.neighbors:
+			var nb = state.get_territory(nb_id)
+			if nb == null:
+				continue
+			if nb.owner_id == 0:
+				rinf_nb[nb_id] = true
+			else:
+				atk_nb[nb_id] = true
+	# Territories under attack (inbound hostile transit) get a red pulse.
+	var contested := {}
+	for a in state.transits:
+		var ta = state.get_territory(a.move_to)
+		if ta != null and a.owner_id != ta.owner_id:
+			contested[a.move_to] = true
 	for t in state.territories:
 		var ncol := _nation_color(t.owner_id)
 		var is_sel: bool = t.id == selected_id
+		# Capture flash: brighten briefly when ownership changes.
+		if not _last_owner.has(t.id):
+			_last_owner[t.id] = t.owner_id
+		elif int(_last_owner[t.id]) != t.owner_id:
+			_last_owner[t.id] = t.owner_id
+			_flash[t.id] = 1.0
+		var flash: float = float(_flash.get(t.id, 0.0))
 		var fill: Polygon2D = _fill[t.id]
 		var base := Color(ncol.r * 0.55, ncol.g * 0.55, ncol.b * 0.55)
-		fill.color = base.lightened(0.35) if is_sel else base
+		if is_sel:
+			base = base.lightened(0.35)
+		if flash > 0.0:
+			base = base.lerp(Color.WHITE, flash * 0.7)
+		fill.color = base
 		var border: Line2D = _border[t.id]
 		border.default_color = Color(ncol.r * 0.32, ncol.g * 0.32, ncol.b * 0.32)
 		var sel: Line2D = _selection_line[t.id]
@@ -277,6 +318,16 @@ func _refresh_map() -> void:
 		elif valid_targets.has(t.id):
 			sel.visible = true
 			sel.default_color = UiKit.ACCENT
+		elif atk_nb.has(t.id):
+			sel.visible = true
+			sel.default_color = Color(1.0, 0.75, 0.25) # gold: attackable
+		elif rinf_nb.has(t.id):
+			sel.visible = true
+			sel.default_color = Color(0.45, 0.75, 1.0) # blue: reinforceable
+		elif contested.has(t.id):
+			sel.visible = true
+			var pulse := 0.55 + 0.45 * sin(_pulse_t * 6.0)
+			sel.default_color = Color(1.0, 0.25, 0.2, pulse)
 		else:
 			sel.visible = false
 		var marker: Node2D = _army_marker[t.id]
@@ -296,6 +347,57 @@ func _refresh_map() -> void:
 		else:
 			marker.visible = false
 	_refresh_transits()
+	_refresh_frontiers()
+
+
+## Draw a strong dark line along every edge shared by two territories with
+## different owners. Internal borders stay thin; national frontiers read
+## clearly without dominating the map.
+func _refresh_frontiers() -> void:
+	if _frontier_layer == null:
+		return
+	for c in _frontier_layer.get_children():
+		c.queue_free()
+	if state == null:
+		return
+	for t in state.territories:
+		for nb_id in t.neighbors:
+			if nb_id <= t.id:
+				continue # draw each shared edge once
+			var nb = state.get_territory(nb_id)
+			if nb == null or nb.owner_id == t.owner_id:
+				continue
+			var edge := _shared_edge(t.polygon, nb.polygon)
+			if edge.size() == 2:
+				var line := Line2D.new()
+				line.points = edge
+				line.width = 5.5
+				line.default_color = Color(0.04, 0.05, 0.07, 0.92)
+				line.joint_mode = Line2D.LINE_JOINT_ROUND
+				_frontier_layer.add_child(line)
+			else:
+				# Fallback: straight line between centers when the shared
+				# edge can't be resolved (should be rare).
+				var line2 := Line2D.new()
+				line2.points = PackedVector2Array([t.center, nb.center])
+				line2.width = 3.0
+				line2.default_color = Color(0.04, 0.05, 0.07, 0.6)
+				_frontier_layer.add_child(line2)
+
+
+## The two endpoints of the edge shared by two adjacent polygons.
+## Adjacent cells share identical vertex positions (same circumcenter
+## computation), so a small tolerance is enough.
+func _shared_edge(a: PackedVector2Array, b: PackedVector2Array) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	for va in a:
+		for vb in b:
+			if va.distance_squared_to(vb) < 9.0:
+				pts.append(va)
+				break
+		if pts.size() == 2:
+			break
+	return pts
 
 
 func _refresh_transits() -> void:
@@ -1196,6 +1298,15 @@ func _process(delta: float) -> void:
 	var eff := 0.0 if paused else speed_setting
 	if eff > 0.0:
 		state.tick(delta * eff * Tacterra.DAYS_PER_SECOND)
+	_pulse_t += delta
+	# Decay capture flashes (~0.8s).
+	var done_flash: Array = []
+	for tid in _flash.keys():
+		_flash[tid] = float(_flash[tid]) - delta * 1.25
+		if float(_flash[tid]) <= 0.0:
+			done_flash.append(tid)
+	for tid in done_flash:
+		_flash.erase(tid)
 	_refresh_t += delta
 	if _refresh_t >= 0.25:
 		_refresh_t = 0.0
