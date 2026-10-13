@@ -7,6 +7,15 @@ enum Difficulty { EASY, NORMAL, HARD }
 enum Personality { EXPANSIONIST, DEFENSIVE, AGGRESSIVE }
 enum MapSize { SMALL, STANDARD, LARGE }
 enum NotifyKind { INFO, GOOD, BAD, BATTLE }
+enum Scenario { SKIRMISH, DOMINATION, SURVIVAL }
+
+# --- scenarios ---
+const SCENARIO_NAMES := ["Skirmish", "Domination", "Survival"]
+const SCENARIO_DESCS := {
+	Scenario.SKIRMISH: "Defeat every rival nation to win.",
+	Scenario.DOMINATION: "Control 60% of all territories to win.",
+	Scenario.SURVIVAL: "Survive 200 days against overwhelming odds.",
+}
 
 # --- time ---
 const DAYS_PER_SECOND := 2.0 ## game-days per real second at 1x speed
