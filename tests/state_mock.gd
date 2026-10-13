@@ -13,6 +13,7 @@ var speed: float = 1.0
 var settings: Dictionary = {}
 var over: bool = false
 var winner_id: int = -1
+var last_ownership_change_day: float = 0.0
 var player_won: bool = false
 var notifications: Array = []
 var battle_reports: Array = []

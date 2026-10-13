@@ -146,6 +146,7 @@ static func _capture(state, a, t: TerritoryData, peaceful: bool) -> void:
 	t.army = null
 	t.garrison = 0
 	t.owner_id = a.owner_id
+	state.last_ownership_change_day = state.day
 	if t.is_capital:
 		t.is_capital = false
 		if prev_owner >= 0:

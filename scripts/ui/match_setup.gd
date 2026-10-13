@@ -2,7 +2,7 @@ extends Control
 ## TACTERRA RPG — match setup screen.
 ## Every option maps into the settings Dictionary that GameState.create()
 ## expects: {map_size:int, ai_count:int, difficulty:int, preset:String,
-## speed:float}. Defaults: Standard / 3 AI / Normal / Standard / 1x.
+## speed:float, scenario:int}. Defaults: Standard / 3 AI / Normal / Standard / 1x.
 
 const GameScreen := preload("res://scripts/ui/game_screen.gd")
 
@@ -14,6 +14,7 @@ const PRESET_NAMES := ["Poor (250c / 120s / 180 troops)",
 const PRESET_IDS := ["poor", "standard", "rich"]
 const SPEED_NAMES := ["0.5x", "1x", "2x", "4x"]
 const SPEED_VALS := [0.5, 1.0, 2.0, 4.0]
+const SCENARIO_NAMES := ["Skirmish", "Domination", "Survival"]
 
 var _opts := {}
 
@@ -39,10 +40,11 @@ func _ready() -> void:
 	_opts["ai"] = _add_option(vb, "AI opponents", AI_NAMES, 1)
 	_opts["diff"] = _add_option(vb, "Difficulty", DIFF_NAMES, 1)
 	_opts["preset"] = _add_option(vb, "Starting resources", PRESET_NAMES, 1)
+	_opts["scenario"] = _add_option(vb, "Scenario", SCENARIO_NAMES, 0)
 	_opts["speed"] = _add_option(vb, "Game speed", SPEED_NAMES, 1)
 
 	vb.add_child(UiKit.make_label(
-		"Defeat every rival nation to win. Lose all your land and you fall.",
+		"Skirmish: Defeat every rival. Domination: Control 60% of lands. Survival: Endure 200 days.",
 		16, UiKit.TEXT_DIM))
 
 	var start := UiKit.make_button("Start Battle", 64, 24)
@@ -75,6 +77,7 @@ func _collect_settings() -> Dictionary:
 		"ai_count": int((_opts["ai"] as OptionButton).selected) + 2,
 		"difficulty": int((_opts["diff"] as OptionButton).selected),
 		"preset": PRESET_IDS[int((_opts["preset"] as OptionButton).selected)],
+		"scenario": int((_opts["scenario"] as OptionButton).selected),
 		"speed": float(SPEED_VALS[int((_opts["speed"] as OptionButton).selected)]),
 	}
 

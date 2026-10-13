@@ -155,6 +155,14 @@ func _ready() -> void:
 	_build_map()
 	_build_hud()
 	_focus_camera_initial()
+	# Announce the scenario objective at match start.
+	var scenario: int = int(state.settings.get("scenario", 0))
+	var obj_text := "Objective: Defeat every rival nation."
+	if scenario == 1:
+		obj_text = "Objective: Control 60% of all territories."
+	elif scenario == 2:
+		obj_text = "Objective: Survive 200 days against overwhelming odds."
+	state.add_notification(obj_text, 0)
 	_last_notif = (state.notifications as Array).size()
 	refresh_all()
 
