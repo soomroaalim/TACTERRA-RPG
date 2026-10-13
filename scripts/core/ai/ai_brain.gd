@@ -627,6 +627,14 @@ static func _think_attack(state: GameState, nation: NationData, owned: Array[int
 	# WEAKEN objective: commit harder when focus-firing a weak rival.
 	if nation.ai_objective == "WEAKEN":
 		threshold -= 0.2
+	# Stalemate breaker: if no territory has changed hands in a long time,
+	# become more aggressive rather than waiting forever for the perfect
+	# opportunity. This is what unstalls Easy/Normal endgames.
+	var stalemate_days: float = state.day - state.last_ownership_change_day
+	if stalemate_days > 100.0:
+		threshold -= 0.3
+		if stalemate_days > 200.0:
+			threshold -= 0.2
 	var hard: bool = nation.difficulty == Tacterra.Difficulty.HARD
 	var limit := 2 if hard else 1
 	var cands := _attack_candidates(state, nation, owned, threshold)
