@@ -21,6 +21,7 @@ var player_won: bool = false
 var notifications: Array[Dictionary] = [] ## {day, text, kind}
 var battle_reports: Array[Dictionary] = []
 var rng: RandomNumberGenerator = null
+var last_ownership_change_day: float = 0.0 ## for stalemate detection
 
 
 # ---------------------------------------------------------------- creation --
@@ -40,6 +41,7 @@ static func create(p_settings: Dictionary) -> GameState:
 		"difficulty": int(p_settings.get("difficulty", Tacterra.Difficulty.NORMAL)),
 		"preset": str(p_settings.get("preset", "standard")),
 		"speed": float(p_settings.get("speed", 1.0)),
+		"scenario": int(p_settings.get("scenario", 0)),
 	}
 	s.speed = float(s.settings["speed"])
 	s.day = 0.0
@@ -382,6 +384,7 @@ func to_dict() -> Dictionary:
 		"over": over,
 		"winner_id": winner_id,
 		"player_won": player_won,
+		"last_ownership_change_day": last_ownership_change_day,
 		"rng_seed": rng.seed if rng != null else 0,
 		"territories": terrs,
 		"nations": nats,
@@ -458,6 +461,7 @@ static func load_dict(d) -> Array:
 	s.over = bool(d["over"])
 	s.winner_id = int(d["winner_id"])
 	s.player_won = bool(d["player_won"])
+	s.last_ownership_change_day = float(d.get("last_ownership_change_day", d["day"]))
 	for td in terrs:
 		s.territories.append(TerritoryData.from_dict(td))
 	for nd in nats:
