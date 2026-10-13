@@ -41,6 +41,29 @@ static func check(state) -> void:
 			"Defeat! Your nation has fallen. %s dominates Tacterra." % wname,
 			Tacterra.NotifyKind.BAD)
 		return
+	var scenario: int = int(state.settings.get("scenario", 0))
+	# Scenario victory checks (0=Skirmish, 1=Domination, 2=Survival).
+	if scenario == 1 and p != null:
+		var owned: int = state.owned_ids(p.id).size()
+		var total: int = state.territories.size()
+		if total > 0 and float(owned) / float(total) >= 0.6:
+			state.over = true
+			state.player_won = true
+			state.winner_id = p.id
+			state.add_notification(
+				"Victory! You control %d%% of Tacterra." % int(100.0 * owned / total),
+				Tacterra.NotifyKind.GOOD)
+			return
+	if scenario == 2 and p != null:
+		if state.day >= 200.0:
+			state.over = true
+			state.player_won = true
+			state.winner_id = p.id
+			state.add_notification(
+				"Victory! You survived 200 days against overwhelming odds.",
+				Tacterra.NotifyKind.GOOD)
+			return
+	# Standard skirmish: eliminate all AI.
 	var ai_alive := false
 	for n in state.nations:
 		if not n.is_player and not n.eliminated:
